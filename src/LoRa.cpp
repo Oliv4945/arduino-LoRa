@@ -63,6 +63,8 @@
     #define ISR_PREFIX
 #endif
 
+volatile bool LoRaClass::_irq_received; 
+
 LoRaClass::LoRaClass() :
   _spiSettings(LORA_DEFAULT_SPI_FREQUENCY, MSBFIRST, SPI_MODE0),
   _spi(&LORA_DEFAULT_SPI),
@@ -95,6 +97,8 @@ int LoRaClass::begin(long frequency)
   digitalWrite(LORA_RESET, HIGH);
   delay(50);
 #endif
+
+  _irq_received = false;
 
   // setup pins
   pinMode(_ss, OUTPUT);
@@ -655,35 +659,38 @@ void LoRaClass::implicitHeaderMode()
 
 void LoRaClass::handleDio0Rise()
 {
-  int irqFlags = readRegister(REG_IRQ_FLAGS);
+  if (_irq_received == true) {
+    int irqFlags = readRegister(REG_IRQ_FLAGS);
 
-  // clear IRQ's
-  writeRegister(REG_IRQ_FLAGS, irqFlags);
+    // clear IRQ's
+    writeRegister(REG_IRQ_FLAGS, irqFlags);
 
-  if ((irqFlags & IRQ_PAYLOAD_CRC_ERROR_MASK) == 0) {
+    if ((irqFlags & IRQ_PAYLOAD_CRC_ERROR_MASK) == 0) {
 
-    if ((irqFlags & IRQ_RX_DONE_MASK) != 0) {
-      // received a packet
-      _packetIndex = 0;
+      if ((irqFlags & IRQ_RX_DONE_MASK) != 0) {
+        // received a packet
+        _packetIndex = 0;
 
-      // read packet length
-      int packetLength = _implicitHeaderMode ? readRegister(REG_PAYLOAD_LENGTH) : readRegister(REG_RX_NB_BYTES);
+        // read packet length
+        int packetLength = _implicitHeaderMode ? readRegister(REG_PAYLOAD_LENGTH) : readRegister(REG_RX_NB_BYTES);
 
-      // set FIFO address to current RX address
-      writeRegister(REG_FIFO_ADDR_PTR, readRegister(REG_FIFO_RX_CURRENT_ADDR));
+        // set FIFO address to current RX address
+        writeRegister(REG_FIFO_ADDR_PTR, readRegister(REG_FIFO_RX_CURRENT_ADDR));
 
-      if (_onReceive) {
-        _onReceive(packetLength);
+        if (_onReceive) {
+          _onReceive(packetLength);
+        }
+
+        // reset FIFO address
+        writeRegister(REG_FIFO_ADDR_PTR, 0);
       }
-
-      // reset FIFO address
-      writeRegister(REG_FIFO_ADDR_PTR, 0);
-    }
-    else if ((irqFlags & IRQ_TX_DONE_MASK) != 0) {
-      if (_onTxDone) {
-        _onTxDone();
+      else if ((irqFlags & IRQ_TX_DONE_MASK) != 0) {
+        if (_onTxDone) {
+          _onTxDone();
+        }
       }
     }
+    _irq_received = false;
   }
 }
 
@@ -715,7 +722,7 @@ uint8_t LoRaClass::singleTransfer(uint8_t address, uint8_t value)
 
 ISR_PREFIX void LoRaClass::onDio0Rise()
 {
-  LoRa.handleDio0Rise();
+  _irq_received = true;
 }
 
 LoRaClass LoRa;

@@ -90,11 +90,12 @@ public:
 
   void dumpRegisters(Stream& out);
 
+  void handleDio0Rise();
+
 private:
   void explicitHeaderMode();
   void implicitHeaderMode();
 
-  void handleDio0Rise();
   bool isTransmitting();
 
   int getSpreadingFactor();
@@ -119,6 +120,7 @@ private:
   int _implicitHeaderMode;
   void (*_onReceive)(int);
   void (*_onTxDone)();
+  static volatile bool _irq_received;
 };
 
 extern LoRaClass LoRa;
